@@ -1,0 +1,4 @@
+Bootstrap completed: Sat Nov 29 18:34:24 EST 2025
+Log: /Users/marcusc/bootstrap-m4.log
+Backups: /Users/marcusc/bootstrap-m4-backups-20251129T232629Z
+Next: Add API keys to Keychain, start Docker Desktop, verify tools in new terminal

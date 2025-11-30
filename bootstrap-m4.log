@@ -1,0 +1,55 @@
+[BOOTSTRAP] Starting bootstrap — log: /Users/marcusc/bootstrap-m4.log
+[BOOTSTRAP] Checking macOS architecture
+[BOOTSTRAP] OS: Darwin  ARCH: arm64
+[BOOTSTRAP] Verifying Xcode Command Line Tools
+[BOOTSTRAP] Xcode CLT found at /Library/Developer/CommandLineTools
+[BOOTSTRAP] Checking Homebrew
+[BOOTSTRAP] Installing Homebrew
+[BOOTSTRAP] RUN: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+[BOOTSTRAP] Homebrew: Homebrew 5.0.3
+[BOOTSTRAP] Creating workspace under ~/code
+[BOOTSTRAP] RUN: mkdir -p /Users/marcusc/code/{backend/java,backend/python,backend/go,frontend/react,frontend/angular,infra,ai-tools,samples,dotfiles,scripts}
+[BOOTSTRAP] Checking asdf
+[BOOTSTRAP] RUN: brew install asdf
+[BOOTSTRAP] asdf version: asdf version 0.18.0 (revision unknown)
+[BOOTSTRAP] Adding asdf init to ~/.zshrc
+[BOOTSTRAP] Added alias py -> python3
+[BOOTSTRAP] Adding asdf plugins
+[BOOTSTRAP] Installing Java (Temurin 21)
+[BOOTSTRAP] Installing Python 3.12
+[BOOTSTRAP] Installing Node LTS
+[BOOTSTRAP] Installing Go
+[BOOTSTRAP] Installing common dev tools (git, wget, gnupg)
+[BOOTSTRAP] RUN: brew install git wget gnupg gawk || true
+[BOOTSTRAP] RUN: brew install --cask docker
+[BOOTSTRAP] Docker Desktop installed — open it from Applications to finish setup
+[BOOTSTRAP] VS Code not found — install it and run 'Shell Command: Install code command in PATH' from Command Palette
+[BOOTSTRAP] Installing Python helpers (pipx, poetry, fastapi, uvicorn)
+[BOOTSTRAP] RUN: python3 -m pip install --upgrade pip setuptools wheel 2>/dev/null || true
+[BOOTSTRAP] RUN: python3 -m pip install --user pipx poetry black isort 'uvicorn[standard]' fastapi 2>/dev/null || true
+[BOOTSTRAP] Installing Node tools (pnpm, Angular CLI)
+[BOOTSTRAP] RUN: npm install -g pnpm@latest @angular/cli@latest 2>/dev/null || true
+[BOOTSTRAP] AI tools setup
+[BOOTSTRAP] RUN: curl -sS https://kilo.ai/install | bash
+[BOOTSTRAP] WARNING: command failed: curl -sS https://kilo.ai/install | bash
+[BOOTSTRAP] RUN: brew install --cask google-cloud-sdk
+[BOOTSTRAP] Anthropic/OpenAI: add API keys to macOS Keychain manually (see README)
+[BOOTSTRAP] === VERIFICATION ===
+[BOOTSTRAP] Java: No version is set for command java
+[BOOTSTRAP] Python: No version is set for command python3
+Consider adding one of the following versions in your config file at /Users/marcusc/.tool-versions
+python 3.12.0
+not found
+[BOOTSTRAP] Node: No version is set for command node
+Consider adding one of the following versions in your config file at /Users/marcusc/.tool-versions
+nodejs lts
+not found
+[BOOTSTRAP] Go: No version is set for command go
+Consider adding one of the following versions in your config file at /Users/marcusc/.tool-versions
+golang 1.25.4
+not found
+[BOOTSTRAP] Git: git version 2.52.0
+[BOOTSTRAP] Docker: Docker version 29.0.1, build eedd969
+[BOOTSTRAP] VS Code: /Users/marcusc/bootstrap-m4.sh:182: command not found: code
+[BOOTSTRAP] Bootstrap complete! Open a new terminal to pick up PATH changes.
+[BOOTSTRAP] Log: /Users/marcusc/bootstrap-m4.log | Backups: /Users/marcusc/bootstrap-m4-backups-20251129T232629Z
