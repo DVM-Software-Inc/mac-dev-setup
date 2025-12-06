@@ -243,4 +243,25 @@ rsync -avz --progress oldmac:~/code/ ~/code/
 
 ---
 
-*Generated: November 30, 2025*
+## Project Sync Between Machines
+
+After setting up your development environment, use `dvm-sync.sh` to keep your projects synced between machines via GitHub.
+
+See [GITHUB_SYNC_SETUP.md](./GITHUB_SYNC_SETUP.md) for complete instructions on:
+- Setting up projects on a new machine
+- Daily workflow (pull/push)
+- Managing multiple projects
+
+Quick start:
+```bash
+# First time on new machine
+./dvm-sync.sh clone
+
+# Daily workflow
+./dvm-sync.sh pull   # Before work
+./dvm-sync.sh push   # After changes
+```
+
+---
+
+*Generated: December 6, 2025*
