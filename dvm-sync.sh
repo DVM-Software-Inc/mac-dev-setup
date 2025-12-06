@@ -17,6 +17,8 @@ set -e
 ORG="DVM-Software-Inc"
 BASE_DIR="$HOME/code"
 REPOS=(
+  "infra"
+  "backend-go-hello"
   "dvm-fullstack"
   "smb-tax"
   "md-reader"
