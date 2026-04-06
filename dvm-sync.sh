@@ -16,6 +16,9 @@ set -e
 # Configuration
 ORG="DVM-Software-Inc"
 BASE_DIR="$HOME/code"
+# GIT_PROTOCOL: "ssh" or "https" — auto-detected if not set via env
+# Override: GIT_PROTOCOL=https ./dvm-sync.sh clone
+GIT_PROTOCOL="${GIT_PROTOCOL:-auto}"
 
 # This script lives in mac-dev-setup — it syncs itself along with everything else
 REPOS=(
@@ -85,14 +88,24 @@ check_prerequisites() {
     print_error "Git is not installed. Please install git first."
     exit 1
   fi
-  
+
   if ! command -v gh &> /dev/null; then
-    print_info "GitHub CLI not found. Continuing without it (you may need SSH keys configured)"
+    print_info "GitHub CLI not found. Install it for HTTPS auth or configure SSH keys."
   fi
-  
+
   if [ ! -d "$BASE_DIR" ]; then
     print_info "Creating $BASE_DIR..."
     mkdir -p "$BASE_DIR"
+  fi
+
+  detect_protocol
+
+  # Set up gh as git credential helper for HTTPS if available
+  if [ "$GIT_PROTOCOL" = "https" ] && command -v gh &>/dev/null; then
+    if ! git config --global credential.https://github.com.helper 2>/dev/null | grep -q "gh auth"; then
+      print_info "Setting up gh as git credential helper for HTTPS..."
+      gh auth setup-git
+    fi
   fi
 }
 
@@ -102,6 +115,37 @@ get_repo_org() {
     cc_dvm) echo "DVM-Software" ;;
     *)      echo "$ORG" ;;
   esac
+}
+
+detect_protocol() {
+  if [ "$GIT_PROTOCOL" != "auto" ]; then
+    return
+  fi
+  # Prefer SSH if keys exist and can connect
+  if ssh -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
+    GIT_PROTOCOL="ssh"
+  elif command -v gh &>/dev/null && gh auth status &>/dev/null; then
+    # gh is authed — use HTTPS with gh credential helper
+    GIT_PROTOCOL="https"
+  else
+    # Fallback: check for SSH key files
+    if [ -f "$HOME/.ssh/id_ed25519" ] || [ -f "$HOME/.ssh/id_rsa" ]; then
+      GIT_PROTOCOL="ssh"
+    else
+      GIT_PROTOCOL="https"
+    fi
+  fi
+  print_info "Using $GIT_PROTOCOL protocol (override with GIT_PROTOCOL=ssh|https)"
+}
+
+get_clone_url() {
+  local repo_org="$1"
+  local repo="$2"
+  if [ "$GIT_PROTOCOL" = "ssh" ]; then
+    echo "git@github.com:$repo_org/$repo.git"
+  else
+    echo "https://github.com/$repo_org/$repo.git"
+  fi
 }
 
 clone_repos() {
@@ -138,7 +182,9 @@ clone_repos() {
 
     echo ""
     echo "📦 Cloning $repo..."
-    git clone "git@github.com:$repo_org/$repo.git" "$repo"
+    local clone_url
+    clone_url=$(get_clone_url "$repo_org" "$repo")
+    git clone "$clone_url" "$repo"
     print_success "$repo cloned"
   done
 
@@ -355,6 +401,56 @@ status_repos() {
   fi
 }
 
+switch_protocol() {
+  local target="${1:-}"
+  if [ -z "$target" ]; then
+    print_error "Usage: ./dvm-sync.sh switch-protocol <ssh|https>"
+    exit 1
+  fi
+
+  print_header "🔀 Switching all remotes to $target"
+
+  for repo in "${REPOS[@]}"; do
+    local_path="$BASE_DIR/$repo"
+    if [ ! -d "$local_path/.git" ]; then
+      continue
+    fi
+
+    cd "$local_path"
+    local current_url
+    current_url=$(git remote get-url origin 2>/dev/null || echo "")
+    if [ -z "$current_url" ]; then
+      continue
+    fi
+
+    # Extract org/repo from either format
+    local slug=""
+    case "$current_url" in
+      git@github.com:*) slug="${current_url#git@github.com:}" ; slug="${slug%.git}" ;;
+      https://github.com/*) slug="${current_url#https://github.com/}" ; slug="${slug%.git}" ;;
+    esac
+
+    if [ -z "$slug" ]; then
+      print_info "$repo — unrecognized remote URL, skipping"
+      continue
+    fi
+
+    local new_url
+    if [ "$target" = "ssh" ]; then
+      new_url="git@github.com:$slug.git"
+    else
+      new_url="https://github.com/$slug.git"
+    fi
+
+    if [ "$current_url" = "$new_url" ]; then
+      print_info "$repo already using $target"
+    else
+      git remote set-url origin "$new_url"
+      print_success "$repo → $new_url"
+    fi
+  done
+}
+
 setup_git_config() {
   print_header "🔧 Setting up Git configuration"
   
@@ -397,6 +493,10 @@ main() {
       check_prerequisites
       status_repos
       ;;
+    switch-protocol)
+      check_prerequisites
+      switch_protocol "$2"
+      ;;
     setup)
       check_prerequisites
       setup_git_config
@@ -409,30 +509,39 @@ ${GREEN}Usage:${NC}
   ./dvm-sync.sh <command>
 
 ${GREEN}Commands:${NC}
-  clone       Clone all repos from $ORG (initial setup on new machine)
-  pull        Pull latest changes from all repos
-  push        Push local changes to all repos
-  status      Show git status for all repos
-  setup       Configure git with DVM-Software credentials
-  help        Show this help message
+  clone               Clone all repos from $ORG (initial setup on new machine)
+  pull                Pull latest changes from all repos
+  push                Push local changes to all repos
+  status              Show git status for all repos
+  switch-protocol     Switch all remotes between ssh and https
+  setup               Configure git with DVM-Software credentials
+  help                Show this help message
 
 ${GREEN}Examples:${NC}
-  # First time on new machine:
+  # First time on new machine (auto-detects ssh vs https):
   ./dvm-sync.sh clone
-  
+
+  # Force HTTPS (no SSH keys needed, uses gh auth):
+  GIT_PROTOCOL=https ./dvm-sync.sh clone
+
+  # Switch existing repos to HTTPS:
+  ./dvm-sync.sh switch-protocol https
+
   # Daily sync:
   ./dvm-sync.sh pull
-  
+
   # After making changes:
   ./dvm-sync.sh push
 
 ${GREEN}Configuration:${NC}
   Organization: $ORG
   Base Directory: $BASE_DIR
+  Protocol: $GIT_PROTOCOL (override with GIT_PROTOCOL=ssh|https)
   Repos: ${REPOS[*]}
 
-${YELLOW}Note:${NC} Make sure you have SSH keys configured for GitHub:
-  https://docs.github.com/en/authentication/connecting-to-github-with-ssh
+${YELLOW}Auth options:${NC}
+  SSH:   Configure SSH keys — https://docs.github.com/en/authentication/connecting-to-github-with-ssh
+  HTTPS: Install gh CLI and run 'gh auth login' — credentials handled automatically
 EOF
       ;;
   esac
