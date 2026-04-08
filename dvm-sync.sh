@@ -451,6 +451,101 @@ switch_protocol() {
   done
 }
 
+env_export() {
+  local archive="$BASE_DIR/dvm-env-bundle.tar.gz.enc"
+  local tmpdir
+  tmpdir=$(mktemp -d)
+
+  print_header "📦 Exporting .env files from all repos"
+
+  local count=0
+  for repo in "${REPOS[@]}"; do
+    local_path="$BASE_DIR/$repo"
+    if [ ! -d "$local_path" ]; then
+      continue
+    fi
+
+    # Find all .env* files (skip .env.example, .env.*.example, .git)
+    while IFS= read -r envfile; do
+      # Skip example/template files
+      case "$envfile" in
+        *.example) continue ;;
+        *.sample)  continue ;;
+        *.template) continue ;;
+      esac
+      # Compute relative path from BASE_DIR
+      local relpath="${envfile#$BASE_DIR/}"
+      mkdir -p "$tmpdir/$(dirname "$relpath")"
+      cp "$envfile" "$tmpdir/$relpath"
+      count=$((count + 1))
+    done < <(find "$local_path" -maxdepth 3 -name ".env*" -not -path "*/.git/*" -not -path "*/node_modules/*" -not -path "*/.venv/*" 2>/dev/null)
+  done
+
+  if [ "$count" -eq 0 ]; then
+    print_info "No .env files found"
+    rm -rf "$tmpdir"
+    return
+  fi
+
+  print_info "Found $count .env files, creating encrypted archive..."
+
+  # Create tar, then encrypt with openssl (prompts for password)
+  tar -czf - -C "$tmpdir" . | openssl enc -aes-256-cbc -salt -pbkdf2 -out "$archive"
+  rm -rf "$tmpdir"
+
+  print_success "Encrypted archive: $archive"
+  print_info "Transfer to the other machine and run: ./dvm-sync.sh env-import"
+}
+
+env_import() {
+  local archive="$BASE_DIR/dvm-env-bundle.tar.gz.enc"
+
+  if [ ! -f "$archive" ]; then
+    print_error "No env bundle found at $archive"
+    print_info "Transfer the file from the source machine first"
+    exit 1
+  fi
+
+  print_header "📥 Importing .env files from encrypted archive"
+
+  local tmpdir
+  tmpdir=$(mktemp -d)
+
+  # Decrypt and extract (prompts for password)
+  if ! openssl enc -aes-256-cbc -d -salt -pbkdf2 -in "$archive" | tar -xzf - -C "$tmpdir"; then
+    print_error "Decryption failed (wrong password?)"
+    rm -rf "$tmpdir"
+    exit 1
+  fi
+
+  local count=0
+  local skipped=0
+  while IFS= read -r envfile; do
+    local relpath="${envfile#$tmpdir/}"
+    local target="$BASE_DIR/$relpath"
+    local target_dir
+    target_dir=$(dirname "$target")
+
+    if [ ! -d "$target_dir" ]; then
+      print_info "Skipping $relpath (repo not cloned)"
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    if [ -f "$target" ]; then
+      print_info "Overwriting $relpath"
+    fi
+
+    cp "$envfile" "$target"
+    count=$((count + 1))
+  done < <(find "$tmpdir" -type f 2>/dev/null)
+
+  rm -rf "$tmpdir"
+
+  print_success "Imported $count .env files ($skipped skipped)"
+  print_info "You can now delete the bundle: rm $archive"
+}
+
 setup_git_config() {
   print_header "🔧 Setting up Git configuration"
   
@@ -497,6 +592,12 @@ main() {
       check_prerequisites
       switch_protocol "$2"
       ;;
+    env-export)
+      env_export
+      ;;
+    env-import)
+      env_import
+      ;;
     setup)
       check_prerequisites
       setup_git_config
@@ -514,6 +615,8 @@ ${GREEN}Commands:${NC}
   push                Push local changes to all repos
   status              Show git status for all repos
   switch-protocol     Switch all remotes between ssh and https
+  env-export          Bundle all .env files into an encrypted archive
+  env-import          Unpack .env bundle into repos on this machine
   setup               Configure git with DVM-Software credentials
   help                Show this help message
 
@@ -526,6 +629,11 @@ ${GREEN}Examples:${NC}
 
   # Switch existing repos to HTTPS:
   ./dvm-sync.sh switch-protocol https
+
+  # Sync .env files to another machine:
+  ./dvm-sync.sh env-export          # on source machine (prompts for password)
+  # transfer ~/code/dvm-env-bundle.tar.gz.enc to the other machine
+  ./dvm-sync.sh env-import          # on target machine (prompts for password)
 
   # Daily sync:
   ./dvm-sync.sh pull
