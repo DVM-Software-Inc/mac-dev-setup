@@ -489,8 +489,12 @@ env_export() {
 
   print_info "Found $count .env files, creating encrypted archive..."
 
-  # Create tar, then encrypt with openssl (prompts for password)
-  tar -czf - -C "$tmpdir" . | openssl enc -aes-256-cbc -salt -pbkdf2 -out "$archive"
+  # Create tar, then encrypt with openssl
+  if [ -n "${ENV_PASS:-}" ]; then
+    tar -czf - -C "$tmpdir" . | openssl enc -aes-256-cbc -salt -pbkdf2 -pass env:ENV_PASS -out "$archive"
+  else
+    tar -czf - -C "$tmpdir" . | openssl enc -aes-256-cbc -salt -pbkdf2 -out "$archive"
+  fi
   rm -rf "$tmpdir"
 
   print_success "Encrypted archive: $archive"
@@ -512,7 +516,11 @@ env_import() {
   tmpdir=$(mktemp -d)
 
   # Decrypt and extract (prompts for password)
-  if ! openssl enc -aes-256-cbc -d -salt -pbkdf2 -in "$archive" | tar -xzf - -C "$tmpdir"; then
+  local pass_flag=""
+  if [ -n "${ENV_PASS:-}" ]; then
+    pass_flag="-pass env:ENV_PASS"
+  fi
+  if ! openssl enc -aes-256-cbc -d -salt -pbkdf2 $pass_flag -in "$archive" | tar -xzf - -C "$tmpdir"; then
     print_error "Decryption failed (wrong password?)"
     rm -rf "$tmpdir"
     exit 1
