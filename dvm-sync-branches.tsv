@@ -1,7 +1,9 @@
 mac-dev-setup	main
+assets	main
+audition-reader	main
 buktub	main
 cc_dvm	main
-chatactorai	feat/authentik-oidc-pilot
+chatactorai	main
 comfyui_cloud	main
 ConfyUI-dvm	master
 contextorai	main
@@ -13,8 +15,10 @@ factory_docs_gen	phase1-engine-room
 factory_repo	main
 health	main
 infra	main
+job-snipper	main
 knowingbest	feat/liveness-verification
 maestorai	main
+mdm_wiz	main
 makeroo	makeroo_feb28
 md-player	feat/md-player-completion
 md-reader	feat/v1-error-surfacing
@@ -23,7 +27,9 @@ pro-cure-ai	main
 qe_automaton	main
 setup	main
 smb-tax	feat/containerize
+skills	main
 stock-analyst	main
+talk2me	main
 tattoo-on-me	main
 telegram	main
 todo	main
