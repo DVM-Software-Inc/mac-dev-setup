@@ -20,12 +20,17 @@ BASE_DIR="$HOME/code"
 # Override: GIT_PROTOCOL=https ./dvm-sync.sh clone
 GIT_PROTOCOL="${GIT_PROTOCOL:-auto}"
 
+# Branch manifest — records each repo's working branch so the other machine
+# lands on the right branch after a clone. Lives in mac-dev-setup (synced first).
+BRANCH_MANIFEST="$BASE_DIR/mac-dev-setup/dvm-sync-branches.tsv"
+
 # This script lives in mac-dev-setup — it syncs itself along with everything else
 REPOS=(
   "mac-dev-setup"
   "buktub"
   "cc_dvm"
   "chatactorai"
+  "comfyui_cloud"
   "ConfyUI-dvm"
   "contextorai"
   "deeployai"
@@ -37,10 +42,12 @@ REPOS=(
   "health"
   "infra"
   "knowingbest"
+  "maestorai"
   "makeroo"
   "md-player"
   "md-reader"
   "mermaid-thing"
+  "pro-cure-ai"
   "qe_automaton"
   "setup"
   "smb-tax"
@@ -49,6 +56,7 @@ REPOS=(
   "telegram"
   "todo"
   "vault"
+  "vps_deploy"
   "web_templates"
   "yt-slopper"
 )
@@ -119,6 +127,16 @@ get_repo_org() {
   esac
 }
 
+# Maps a local directory name to its GitHub repo name when they differ.
+# (e.g. the vps_deploy/ folder is the vps-deploy repo on GitHub)
+get_repo_remote_name() {
+  local repo="$1"
+  case "$repo" in
+    vps_deploy) echo "vps-deploy" ;;
+    *)          echo "$repo" ;;
+  esac
+}
+
 detect_protocol() {
   if [ "$GIT_PROTOCOL" != "auto" ]; then
     return
@@ -159,6 +177,8 @@ clone_repos() {
     local_path="$BASE_DIR/$repo"
     local repo_org
     repo_org=$(get_repo_org "$repo")
+    local remote_name
+    remote_name=$(get_repo_remote_name "$repo")
 
     if [ -d "$local_path/.git" ]; then
       print_info "$repo already exists (skipping clone)"
@@ -173,8 +193,8 @@ clone_repos() {
       git add .
       git commit -m "Initial commit via dvm-sync"
       if command -v gh &> /dev/null; then
-        gh repo create "$repo_org/$repo" --private --source=. --push
-        print_success "$repo initialized and pushed to $repo_org/$repo"
+        gh repo create "$repo_org/$remote_name" --private --source=. --push
+        print_success "$repo initialized and pushed to $repo_org/$remote_name"
       else
         print_error "$repo initialized locally but gh CLI needed to create remote"
       fi
@@ -185,13 +205,16 @@ clone_repos() {
     echo ""
     echo "📦 Cloning $repo..."
     local clone_url
-    clone_url=$(get_clone_url "$repo_org" "$repo")
+    clone_url=$(get_clone_url "$repo_org" "$remote_name")
     git clone "$clone_url" "$repo"
     print_success "$repo cloned"
   done
 
   echo ""
   print_success "All repos cloned!"
+
+  # Land each repo on its recorded working branch
+  restore_branches
 }
 
 pull_repos() {
@@ -229,11 +252,11 @@ pull_repos() {
     echo ""
     echo "📦 Pulling $repo..."
 
-    if git pull; then
-      print_success "$repo pulled"
+    if git pull --rebase --autostash; then
+      print_success "$repo pulled (rebased)"
       updated=$((updated + 1))
     else
-      print_error "Failed to pull $repo"
+      print_error "Failed to pull $repo (resolve rebase conflicts manually)"
     fi
   done
 
@@ -243,6 +266,10 @@ pull_repos() {
 
 push_repos() {
   print_header "⬆️  Pushing changes from all repos"
+
+  # Record current branches so the other machine can restore them after clone.
+  # Written into mac-dev-setup, which is committed/pushed just below.
+  snapshot_branches
 
   # Sync mac-dev-setup (this script) first so other machines get the latest REPOS list
   local self_repo="mac-dev-setup"
@@ -268,6 +295,8 @@ push_repos() {
     local_path="$BASE_DIR/$repo"
     local repo_org
     repo_org=$(get_repo_org "$repo")
+    local remote_name
+    remote_name=$(get_repo_remote_name "$repo")
 
     if [ ! -d "$local_path/.git" ]; then
       print_error "$repo not found at $local_path (not a git repo — run 'clone' first)"
@@ -294,8 +323,8 @@ push_repos() {
     if ! git remote get-url origin &>/dev/null; then
       if command -v gh &> /dev/null; then
         print_info "No remote for $repo, creating GitHub repo..."
-        gh repo create "$repo_org/$repo" --private --source=. --push
-        print_success "$repo created and pushed to $repo_org/$repo"
+        gh repo create "$repo_org/$remote_name" --private --source=. --push
+        print_success "$repo created and pushed to $repo_org/$remote_name"
         pushed=$((pushed + 1))
         continue
       else
@@ -329,6 +358,63 @@ push_repos() {
 
   echo ""
   print_success "Pushed $pushed/$total repos"
+}
+
+snapshot_branches() {
+  # Write "<repo>\t<branch>" for every cloned repo to the manifest.
+  : > "$BRANCH_MANIFEST"
+  local count=0
+  for repo in "${REPOS[@]}"; do
+    local_path="$BASE_DIR/$repo"
+    [ -d "$local_path/.git" ] || continue
+    cd "$local_path"
+    local branch
+    branch=$(git branch --show-current 2>/dev/null)
+    [ -z "$branch" ] && continue   # skip detached HEAD
+    printf '%s\t%s\n' "$repo" "$branch" >> "$BRANCH_MANIFEST"
+    count=$((count + 1))
+  done
+  print_info "Recorded working branches for $count repos → ${BRANCH_MANIFEST#$BASE_DIR/}"
+}
+
+restore_branches() {
+  if [ ! -f "$BRANCH_MANIFEST" ]; then
+    print_info "No branch manifest yet (run 'push' on the source machine first)"
+    return
+  fi
+
+  print_header "🌿 Restoring working branches"
+  local switched=0
+  while IFS=$'\t' read -r repo branch; do
+    [ -z "$repo" ] && continue
+    [ -z "$branch" ] && continue
+    local_path="$BASE_DIR/$repo"
+    [ -d "$local_path/.git" ] || continue
+    cd "$local_path"
+
+    local current
+    current=$(git branch --show-current 2>/dev/null)
+    if [ "$current" = "$branch" ]; then
+      continue   # already on the right branch
+    fi
+
+    git fetch origin "$branch" &>/dev/null || true
+    if git rev-parse --verify --quiet "$branch" >/dev/null; then
+      git checkout "$branch" &>/dev/null && print_success "$repo → $branch"
+      switched=$((switched + 1))
+    elif git rev-parse --verify --quiet "origin/$branch" >/dev/null; then
+      git checkout -b "$branch" --track "origin/$branch" &>/dev/null && print_success "$repo → $branch (new tracking branch)"
+      switched=$((switched + 1))
+    else
+      print_info "$repo: branch '$branch' not found on remote, staying on '$current'"
+    fi
+  done < "$BRANCH_MANIFEST"
+
+  if [ "$switched" -eq 0 ]; then
+    print_info "All repos already on their recorded branches"
+  else
+    print_success "Switched $switched repos to their recorded branches"
+  fi
 }
 
 status_repos() {
@@ -598,6 +684,14 @@ main() {
       check_prerequisites
       status_repos
       ;;
+    snapshot)
+      check_prerequisites
+      snapshot_branches
+      ;;
+    checkout)
+      check_prerequisites
+      restore_branches
+      ;;
     switch-protocol)
       check_prerequisites
       switch_protocol "$2"
@@ -620,10 +714,12 @@ ${GREEN}Usage:${NC}
   ./dvm-sync.sh <command>
 
 ${GREEN}Commands:${NC}
-  clone               Clone all repos from $ORG (initial setup on new machine)
-  pull                Pull latest changes from all repos
-  push                Push local changes to all repos
+  clone               Clone all repos from $ORG, then restore working branches
+  pull                Pull (rebase + autostash) latest changes from all repos
+  push                Push local changes + snapshot working branches
   status              Show git status for all repos
+  snapshot            Record each repo's current branch to the manifest
+  checkout            Restore each repo to its recorded working branch
   switch-protocol     Switch all remotes between ssh and https
   env-export          Bundle all .env files into an encrypted archive
   env-import          Unpack .env bundle into repos on this machine
@@ -650,6 +746,15 @@ ${GREEN}Examples:${NC}
 
   # After making changes:
   ./dvm-sync.sh push
+
+  # Moving between laptops:
+  #   laptop A:  ./dvm-sync.sh push        # pushes commits + records branches
+  #   laptop B:  ./dvm-sync.sh clone       # first time — clones + restores branches
+  #   laptop B:  ./dvm-sync.sh pull        # later — rebase latest onto each branch
+  #              ./dvm-sync.sh checkout    # re-align branches without pulling
+
+${YELLOW}Note:${NC} branches are tracked in dvm-sync-branches.tsv (in mac-dev-setup).
+${YELLOW}Note:${NC} .env / secrets are gitignored — move them with env-export/env-import.
 
 ${GREEN}Configuration:${NC}
   Organization: $ORG
