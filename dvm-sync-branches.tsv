@@ -1,4 +1,5 @@
 mac-dev-setup	main
+assets	main
 audition-reader	phase-3-memorization-engine
 auto_poc	main
 backend-fastapi-audition-reader	dev
@@ -13,12 +14,14 @@ db_back	main
 deeployai	main
 dev-tools	main
 dvm-fullstack	main
+estimator	main
 extractor-statements	main
 factory_docs_gen	phase1-engine-room
 factory_repo	main
 health	main
 infra	main
 intake_orch	dev
+job-snipper	main
 knowingbest	feat/liveness-verification
 maestorai	feat/production-line-v1
 mainfra-typer	dev
@@ -32,6 +35,7 @@ pro-cure-ai	dev
 qe_automaton	main
 setup	main
 smb-tax	phase0-platform-hardening
+skills	main
 stock-analyst	main
 talk2me	main
 tattoo-on-me	main
